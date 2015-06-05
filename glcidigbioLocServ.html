@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>iDigBio and GEOLocate Locality Service</title>
+    <style>
+        iframe {
+            width: 620px;
+            height: 530px;
+            margin: 0px;
+            border: 0;
+        }
+        div.inputs {
+            margin-bottom: 5px;
+        }
+        #received-message{
+            font-size:12px;
+            color:white;
+            margin-left:5px;
+        }
+    </style>
+
+    <script type="text/javascript">
+        var resultLog = "";
+
+        function GLCPolytoWKTPoly(GLCPoly){
+            var result = GLCPoly;
+            var s = GLCPoly.split(','); //lat,lon,lat,lon,lat,lon etc.
+            if (s.length > 5) //at least 3 points
+            {
+                result = "";
+                for (var i = 0; i < (s.length); i += 2)
+                {
+                    if (i == 0)
+                        result += s[i + 1] + " " + s[i];
+                    else
+                        result += ", " + s[i + 1] + " " + s[i];
+                }
+                result = "POLYGON ((" + result + "))";
+            }
+            return result;
+        }
+
+
+    function displayMessage(evt) {
+        var message;
+        if (evt.origin !== "http://www.museum.tulane.edu") {
+            message = "iframe url does not have permision to interact with me";
+        }
+        else {
+            var d = "\t";
+            var country = document.getElementById("country").value;
+            var stateProvince = document.getElementById("stateProvince").value;
+            var county = document.getElementById("county").value;
+            var locality = document.getElementById("locality").value;
+            
+            //message = "Parsed Results:<br />";
+            var breakdown = evt.data.split("|");
+            if (breakdown.length == 4) {
+                /*message += "Lat:" + breakdown[0] + "<br />";
+                message += "Lon:" + breakdown[1] + "<br />";
+                message += "Uncertainty Radius (meters):" + breakdown[2] + "<br />";
+                message += "Uncertainty Polygon:" + breakdown[3] + "<br />";*/
+                wktPoly = GLCPolytoWKTPoly(breakdown[3]);
+                resultLog = resultLog.concat(country, d, stateProvince, d, county, d, locality, d, breakdown[0], d, breakdown[1], d, breakdown[2], d, wktPoly, "<br />")
+            }
+            message = resultLog;
+        }
+        document.getElementById("received-message").innerHTML = message;
+    }
+    if (window.addEventListener) {
+        // For standards-compliant web browsers
+        window.addEventListener("message", displayMessage, false);
+    }
+    else {
+        window.attachEvent("onmessage", displayMessage);
+    }
+    </script>
+
+
+    <script type="text/javascript">
+    function makeRequest() {
+        var xmlhttp;
+        if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
+            xmlhttp = new XMLHttpRequest();
+        }
+        else {// code for IE6, IE5
+            xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+        }
+        xmlhttp.onreadystatechange = function () {
+            if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                //alert("ready");
+                var s = "";
+                var points = "";
+                var country = document.getElementById("country").value;
+                var stateProvince = document.getElementById("stateProvince").value;
+                var county = document.getElementById("county").value;
+                var locality = document.getElementById("locality").value;
+                var res = JSON.parse(xmlhttp.responseText);
+                var uniqueMatchesDict = {};
+                var maxMatches = 1;
+                if (!isNaN(parseInt(document.getElementById("maxiDigBio").value))) {
+                    maxMatches = document.getElementById("maxiDigBio").value
+                }
+                for (var i = 0; i < res.items.length; i++) {
+                    if (i > maxMatches-1) //limit to first x results
+                        break;
+                    var iDigBiolocality = res.items[i].indexTerms.locality;
+                    var sLat, sLon, uncert, poly = "";
+                    if (res.items[i].indexTerms.geopoint !== undefined) {
+                        sLat = res.items[i].indexTerms.geopoint.lat.toFixed(6);
+                        sLon = res.items[i].indexTerms.geopoint.lon.toFixed(6);
+                        if (res.items[i].data["dwc:coordinateUncertaintyInMeters"] !== undefined) {
+                            uncert = res.items[i].data["dwc:coordinateUncertaintyInMeters"]
+                        }
+                        var p = sLat + "|" + sLon + "|From iDigBio|100|" + uncert+"||yellow";//points=lat|lon|pattern|score|uncert|polygon|color
+                        if (uniqueMatchesDict[p] === undefined)
+                        {
+                            uniqueMatchesDict[p] = true;
+                            if (points == "") {
+                                points += "&points=" + p;
+                            }
+                            else {
+                                points += ":" + p;
+                            }
+                        }
+                    }
+                }
+                var glcURL = "http://www.museum.tulane.edu/geolocate/web/webgeoreflight.aspx?w=600&h=300&country=" + country + "&state=" + stateProvince + "&county=" + county + "&locality=" + locality + "&georef=run" + points;
+                //console.log(glcURL);
+                document.getElementById('geolocateFrame').src = glcURL;
+                
+            }
+        }
+        //var q = "{%22geopoint%22:%20{%22type%22:%20%22exists%22},%22data%22:{%22type%22:%22fulltext%22,%20%22value%22:%20%22" + encodeURI(document.getElementById("locality").value) + "%22}}";
+        var q = "{%22stateprovince%22:%22" + encodeURI(document.getElementById("stateProvince").value) + "%22,%22geopoint%22:%20{%22type%22:%20%22exists%22},%22data%22:{%22type%22:%22fulltext%22,%20%22value%22:%20%22" + encodeURI(document.getElementById("locality").value) + "%22}}";
+        var u = "http://beta-search.idigbio.org/v2/search/records/?fields=[%22country%22,%22stateprovince%22,%22county%22,%22locality%22,%22geopoint%22,%22data.dwc:coordinateUncertaintyInMeters%22]&rq=" + q;
+        xmlhttp.open("GET", u, true);
+        xmlhttp.send();
+    }
+    </script>
+</head>
+<body>
+    <h2>Locality Service: iDigBio-GEOLocate Mashup</h2>
+    <div>
+        <div class="inputs">Country: <input id="country" type="text" size="40" value="United States" /></div>
+        <div class="inputs">State: <input id="stateProvince" type="text" size="40" value="california" /></div>
+        <div class="inputs">County: <input id="county" type="text" size="40" value="siskiyou" /></div>
+        <div class="inputs">Locality: <input id="locality" type="text" size="80" value="marble mts.  shackleford creek trail south of sky high valley" /></div>
+        <div class="inputs">Max. iDigBio Results: <input id="maxiDigBio" type="number" min="0" max="20" value="10" /></div>
+        <div><button type="button" onclick="makeRequest()">Test</button></div>  
+        <div>
+                <div style="width:620px; float:left">
+                    <iframe id="geolocateFrame" src="http://www.museum.tulane.edu/geolocate/web/webgeoreflight.aspx?w=600&h=300"></iframe>
+                </div>
+                <div style="background-color:dimgrey; width:520px; height:500px; float:left; overflow:auto">
+                    <p id="received-message"></p>
+                </div>
+        </div>
+     </div>
+</body>
+</html>
