@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>iDigBio to GEOLocate</title>
+    <style>
+        iframe {
+            width: 620px;
+            height: 530px;
+            margin: 0px;
+            border: 0;
+        }
+    </style>
+    <script type="text/javascript">
+    function getParameterByName(name) {
+        name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+        var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+        results = regex.exec(location.search);
+        return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+    }
+
+    function displayMessage(evt) {
+        var message;
+        if (evt.origin !== "http://www.museum.tulane.edu") {
+            message = "iframe url does not have permision to interact with me";
+        }
+        else {
+            message = "From GEOLocate @ " + evt.origin + "<br />" + evt.data + "<br /><br />Parsed Results:<br />";
+            var breakdown = evt.data.split("|");
+            if (breakdown.length == 4) {
+                message += "Lat:" + breakdown[0] + "<br />";
+                message += "Lon:" + breakdown[1] + "<br />";
+                message += "Uncertainty Radius (meters):" + breakdown[2] + "<br />";
+                message += "Uncertainty Polygon:" + breakdown[3] + "<br />";
+            }
+        }
+        document.getElementById("received-message").innerHTML = message;
+    }
+    if (window.addEventListener) {
+        // For standards-compliant web browsers
+        window.addEventListener("message", displayMessage, false);
+    }
+    else {
+        window.attachEvent("onmessage", displayMessage);
+    }
+    </script>
+
+
+    <script type="text/javascript">
+    var res;
+
+    function makeRequest() {
+        var xmlhttp;
+        if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
+            xmlhttp = new XMLHttpRequest();
+        }
+        else {// code for IE6, IE5
+            xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+        }
+        xmlhttp.onreadystatechange = function () {
+            if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                var s = "";
+                var country, stateProvince, county, locality, points = "";
+                res = JSON.parse(xmlhttp.responseText);
+                for (var i = 0; i < res.items.length; i++) {
+                    country = res.items[i].indexTerms.country;
+                    stateProvince = res.items[i].indexTerms.stateprovince;
+                    county = res.items[i].indexTerms.county;
+                    locality = res.items[i].indexTerms.locality;
+                    var sLat, sLon, uncert, poly = "";
+                    if (res.items[i].indexTerms.geopoint !== undefined) {
+                        sLat = res.items[i].indexTerms.geopoint.lat.toString();
+                        sLon = res.items[i].indexTerms.geopoint.lon.toString();
+                        if (res.items[i].data["dwc:coordinateUncertaintyInMeters"] !== undefined) {
+                            uncert = res.items[i].data["dwc:coordinateUncertaintyInMeters"]
+                        }
+                        points = "&points=" + sLat + "|" + sLon + "|From iDigBio|100|" + uncert+"||yellow";//points=lat|lon|pattern|score|uncert|polygon|color
+                    }              
+                    s += country + ";" + stateProvince + ";" + county + ";" + locality + ";" + sLat + ";" + sLon + ";" + "<br>";
+                }
+                document.getElementById("iDigBioData").innerHTML = s;
+                document.getElementById('geolocateFrame').src = "http://www.museum.tulane.edu/geolocate/web/webgeoreflight.aspx?w=600&h=300&country=" + country + "&state=" + stateProvince + "&county=" + county + "&locality=" + locality + "&georef=run" + points;
+            }
+        }
+        var uuid = document.getElementById("UUID").value;
+        var u = "http://beta-search.idigbio.org/v2/search/records/?fields=[%22country%22,%22stateprovince%22,%22county%22,%22locality%22,%22geopoint%22,%22data.dwc:coordinateUncertaintyInMeters%22]&rq=%7B%22uuid%22%3A+%22" + uuid + "%22%7D";
+        xmlhttp.open("GET", u, true);
+        xmlhttp.send();
+    }
+    </script>
+
+
+
+</head>
+<body>
+    <h2>iDigBio to GEOLocate</h2>
+
+    <div>
+        <input id="UUID" type="text" size="40" value="2c0ea60f-a5ac-4c40-9544-cdd75dac8af8" />
+        <button type="button" onclick="makeRequest()">Test</button>
+        <div id="iDigBioData"></div>
+        <div>
+            <iframe id="geolocateFrame" src="http://www.museum.tulane.edu/geolocate/web/webgeoreflight.aspx?w=600&h=300"></iframe>
+            <p id="received-message">Listening for a message from GEOLocate.</p>
+        </div>
+     </div>
+
+
+</body>
+</html>
